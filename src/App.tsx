@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { UserRole } from './types';
+import { Application, CompanyProfile, Internship, Notification, StudentProfile, UserProfile, UserRole } from './types';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { AuthSimulation } from './components/auth/AuthSimulation';
@@ -12,6 +12,17 @@ import { UniversityDashboardView } from './components/university/Dashboard';
 import { AdminDashboardView } from './components/admin/Dashboard';
 import { Card, Badge, Button } from './components/common/UI';
 import { MOCK_USERS, MOCK_STUDENT, MOCK_COMPANY, MOCK_INTERNSHIPS, MOCK_APPLICATIONS } from './mockData';
+import { isSupabaseConfigured, supabase } from './lib/supabase';
+import {
+  getApplications,
+  getCompanyProfile,
+  getInternships,
+  getNotifications,
+  getProfile,
+  getStudentProfile,
+  getUsers,
+  submitApplication,
+} from './services/supabaseData';
 import { 
   Sparkles, 
   MessageSquare, 
@@ -76,12 +87,66 @@ export default function App() {
   const [activePage, setActivePage] = useState<string>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const [users, setUsers] = useState<UserProfile[]>(MOCK_USERS);
+  const [student, setStudent] = useState<StudentProfile>(MOCK_STUDENT);
+  const [company, setCompany] = useState<CompanyProfile>(MOCK_COMPANY);
+  const [internships, setInternships] = useState<Internship[]>(MOCK_INTERNSHIPS);
+  const [applications, setApplications] = useState<Application[]>(MOCK_APPLICATIONS);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    supabase.auth.getSession().then(async ({ data }) => {
+      const sessionUser = data.session?.user;
+      if (!sessionUser) return;
+      setAuthUserId(sessionUser.id);
+      const profile = await getProfile(sessionUser.id);
+      if (profile) {
+        setRole(profile.role);
+        setActivePage('dashboard');
+      }
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthUserId(session?.user?.id || null);
+    });
+
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const loadData = async () => {
+      const [nextInternships, nextUsers] = await Promise.all([
+        getInternships(),
+        getUsers(),
+      ]);
+      setInternships(nextInternships);
+      setUsers(nextUsers);
+
+      if (role === 'STUDENT') {
+        const nextStudent = authUserId ? await getStudentProfile(authUserId) : MOCK_STUDENT;
+        const nextApplications = await getApplications(authUserId || nextStudent.id);
+        const nextNotifications = await getNotifications(authUserId || nextStudent.id);
+        setStudent(nextStudent);
+        setApplications(nextApplications);
+        setNotifications(nextNotifications);
+      }
+
+      if (role === 'COMPANY') {
+        setCompany(authUserId ? await getCompanyProfile(authUserId) : MOCK_COMPANY);
+      }
+    };
+
+    loadData();
+  }, [role, authUserId]);
 
   const currentUser = useMemo(() => {
-    if (role === 'STUDENT') return MOCK_STUDENT;
-    if (role === 'COMPANY') return MOCK_COMPANY;
-    return MOCK_USERS.find(u => u.role === role) || MOCK_USERS[0];
-  }, [role]);
+    if (role === 'STUDENT') return student;
+    if (role === 'COMPANY') return company;
+    return users.find(u => u.role === role) || MOCK_USERS[0];
+  }, [role, student, company, users]);
 
   if (!role) {
     return <AuthSimulation onLogin={(r) => { setRole(r); setActivePage('dashboard'); setNotice(null); }} />;
@@ -95,7 +160,7 @@ export default function App() {
     // Shared Student Pages
     if (role === 'STUDENT') {
       if (activePage.startsWith('job_')) {
-        const job = MOCK_INTERNSHIPS.find(item => `job_${item.id}` === activePage);
+        const job = internships.find(item => `job_${item.id}` === activePage);
         return (
           <div className="space-y-6">
             <PageHeader title={job?.title || 'Internship Details'} subtitle={job ? `${job.companyName} - ${job.location}` : 'Selected internship'} icon={Briefcase} onBack={() => setActivePage('jobs')} />
@@ -132,30 +197,47 @@ export default function App() {
       }
 
       if (activePage.startsWith('apply_')) {
-        const job = MOCK_INTERNSHIPS.find(item => `apply_${item.id}` === activePage);
+        const job = internships.find(item => `apply_${item.id}` === activePage);
         return (
           <div className="space-y-6">
             <PageHeader title="Submit Application" subtitle={job ? `${job.title} at ${job.companyName}` : 'Application form'} icon={Send} onBack={() => setActivePage('jobs')} />
             <Card className="mx-auto max-w-3xl p-8">
-              <div className="grid gap-6">
+              <form
+                className="grid gap-6"
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  if (!job) return;
+                  const formData = new FormData(event.currentTarget);
+                  const result = await submitApplication({
+                    studentId: authUserId || student.id,
+                    internshipId: job.id,
+                    coverNote: String(formData.get('coverNote') || ''),
+                    resumeUrl: String(formData.get('resumeUrl') || ''),
+                    matchScore: job.matchScore,
+                  });
+                  setNotice(result.ok ? 'Application saved to Supabase.' : `Application kept in prototype mode: ${result.reason}`);
+                  setApplications(await getApplications(authUserId || student.id));
+                  setActivePage('applications');
+                }}
+              >
                 <label className="space-y-2">
                   <span className="text-xs font-black uppercase tracking-widest text-slate-400">Cover note</span>
-                  <textarea className="h-36 w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium outline-none ring-indigo-500/10 transition-all focus:ring-4" placeholder="Tell the company why you are a strong fit..." />
+                  <textarea name="coverNote" className="h-36 w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium outline-none ring-indigo-500/10 transition-all focus:ring-4" placeholder="Tell the company why you are a strong fit..." />
                 </label>
                 <label className="space-y-2">
                   <span className="text-xs font-black uppercase tracking-widest text-slate-400">Resume link</span>
-                  <input className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium outline-none ring-indigo-500/10 transition-all focus:ring-4" placeholder="https://..." />
+                  <input name="resumeUrl" className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium outline-none ring-indigo-500/10 transition-all focus:ring-4" placeholder="https://..." />
                 </label>
-                <Button onClick={() => showPrototypeNotice('Application submission')}>Submit Application</Button>
-              </div>
+                <Button type="submit">Submit Application</Button>
+              </form>
             </Card>
           </div>
         );
       }
 
       if (activePage.startsWith('application_')) {
-        const application = MOCK_APPLICATIONS.find(item => `application_${item.id}` === activePage);
-        const job = MOCK_INTERNSHIPS.find(item => item.id === application?.internshipId);
+        const application = applications.find(item => `application_${item.id}` === activePage);
+        const job = internships.find(item => item.id === application?.internshipId);
         return (
           <div className="space-y-6">
             <PageHeader title="Application Status" subtitle={job ? `${job.title} at ${job.companyName}` : 'Track your application'} icon={FileText} onBack={() => setActivePage('applications')} />
@@ -182,22 +264,22 @@ export default function App() {
       }
 
       switch (activePage) {
-        case 'dashboard': return <StudentDashboardView onNavigate={setActivePage} />;
-        case 'jobs': return <InternshipListingsView onNavigate={setActivePage} />;
-        case 'applications': return <MyApplicationsView onNavigate={setActivePage} />;
+        case 'dashboard': return <StudentDashboardView onNavigate={setActivePage} student={student} internships={internships} applications={applications} notifications={notifications} />;
+        case 'jobs': return <InternshipListingsView onNavigate={setActivePage} internships={internships} />;
+        case 'applications': return <MyApplicationsView onNavigate={setActivePage} applications={applications} internships={internships} />;
         case 'profile':
           return (
             <div className="space-y-6">
               <PageHeader title="Student Profile" subtitle="Keep your profile ready for matching and applications." icon={Settings} />
               <Card className="p-8">
                 <div className="grid gap-6 md:grid-cols-2">
-                  <div><div className="text-xs font-black uppercase tracking-widest text-slate-400">Name</div><div className="mt-1 font-bold text-slate-900">{MOCK_STUDENT.full_name}</div></div>
-                  <div><div className="text-xs font-black uppercase tracking-widest text-slate-400">Department</div><div className="mt-1 font-bold text-slate-900">{MOCK_STUDENT.department}</div></div>
-                  <div><div className="text-xs font-black uppercase tracking-widest text-slate-400">GPA</div><div className="mt-1 font-bold text-slate-900">{MOCK_STUDENT.gpa}</div></div>
-                  <div><div className="text-xs font-black uppercase tracking-widest text-slate-400">Career Interests</div><div className="mt-1 font-bold text-slate-900">{MOCK_STUDENT.careerInterests.join(', ')}</div></div>
+                  <div><div className="text-xs font-black uppercase tracking-widest text-slate-400">Name</div><div className="mt-1 font-bold text-slate-900">{student.full_name}</div></div>
+                  <div><div className="text-xs font-black uppercase tracking-widest text-slate-400">Department</div><div className="mt-1 font-bold text-slate-900">{student.department}</div></div>
+                  <div><div className="text-xs font-black uppercase tracking-widest text-slate-400">GPA</div><div className="mt-1 font-bold text-slate-900">{student.gpa}</div></div>
+                  <div><div className="text-xs font-black uppercase tracking-widest text-slate-400">Career Interests</div><div className="mt-1 font-bold text-slate-900">{student.careerInterests.join(', ')}</div></div>
                 </div>
                 <div className="mt-8 flex flex-wrap gap-2">
-                  {MOCK_STUDENT.skills.map(skill => (
+                  {student.skills.map(skill => (
                     <span key={skill}>
                       <Badge variant="purple">{skill}</Badge>
                     </span>
@@ -348,7 +430,7 @@ export default function App() {
                </div>
             </div>
           );
-        default: return <StudentDashboardView onNavigate={setActivePage} />;
+        default: return <StudentDashboardView onNavigate={setActivePage} student={student} internships={internships} applications={applications} notifications={notifications} />;
       }
     }
 
@@ -406,7 +488,7 @@ export default function App() {
             </Card>
           );
         case 'manage_jobs':
-          return <RoleListPage title="Manage Internship Posts" subtitle="Review active listings, drafts, and expired posts." icon={Briefcase} rows={MOCK_INTERNSHIPS.map(job => [job.title, job.status, job.expiresAt])} onAction={showPrototypeNotice} />;
+          return <RoleListPage title="Manage Internship Posts" subtitle="Review active listings, drafts, and expired posts." icon={Briefcase} rows={internships.map(job => [job.title, job.status, job.expiresAt])} onAction={showPrototypeNotice} />;
         case 'applicants':
           return <RoleListPage title="Applicants" subtitle="Review candidate matches and application stages." icon={Users} rows={['Alex Johnson|92% Match|Interview', 'Sarah Lee|86% Match|Shortlist', 'Kevin Hart|74% Match|Review'].map(row => row.split('|'))} onAction={showPrototypeNotice} />;
         case 'interviews':
@@ -414,7 +496,7 @@ export default function App() {
         case 'transparency':
           return <TransparencyPage onAction={showPrototypeNotice} />;
         case 'profile':
-          return <CompanyProfilePage onAction={showPrototypeNotice} />;
+          return <CompanyProfilePage company={company} onAction={showPrototypeNotice} />;
         default: return <CompanyDashboardView onNavigate={setActivePage} />;
       }
     }
@@ -436,7 +518,7 @@ export default function App() {
       switch (activePage) {
         case 'dashboard': return <AdminDashboardView onNavigate={setActivePage} />;
         case 'user_management':
-          return <RoleListPage title="User Control" subtitle="Search, review, and manage platform users." icon={Users} rows={MOCK_USERS.map(user => [user.full_name, user.role, user.email])} onAction={showPrototypeNotice} />;
+          return <RoleListPage title="User Control" subtitle="Search, review, and manage platform users." icon={Users} rows={users.map(user => [user.full_name, user.role, user.email])} onAction={showPrototypeNotice} />;
         case 'verification':
           return <RoleListPage title="Verifications" subtitle="Audit company, university, and identity checks." icon={CheckCircle2} rows={['TechFlow|Company|Approved', 'SecureNet|Company|Pending', 'Northbridge University|University|Review'].map(row => row.split('|'))} onAction={showPrototypeNotice} />;
         case 'moderation':
@@ -462,13 +544,18 @@ export default function App() {
         onNavigate={setActivePage} 
         isOpen={isSidebarOpen} 
         setIsOpen={setIsSidebarOpen}
-        onLogout={() => setRole(null)}
+        onLogout={async () => {
+          if (isSupabaseConfigured) await supabase.auth.signOut();
+          setRole(null);
+          setAuthUserId(null);
+        }}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
         <Header 
           role={role} 
           userName={currentUser?.full_name || 'User'} 
+          notifications={notifications}
           onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} 
         />
 
@@ -542,17 +629,17 @@ const TransparencyPage = ({ onAction }: { onAction: (label: string) => void }) =
   </div>
 );
 
-const CompanyProfilePage = ({ onAction }: { onAction: (label: string) => void }) => (
+const CompanyProfilePage = ({ company, onAction }: { company: CompanyProfile; onAction: (label: string) => void }) => (
   <div className="space-y-6">
     <PageHeader title="Company Profile" subtitle="Manage public company information shown to students." icon={Building2} />
     <Card className="p-8">
       <div className="grid gap-6 md:grid-cols-2">
-        <div><div className="text-xs font-black uppercase tracking-widest text-slate-400">Company</div><div className="mt-1 font-bold text-slate-900">{MOCK_COMPANY.full_name}</div></div>
-        <div><div className="text-xs font-black uppercase tracking-widest text-slate-400">Sector</div><div className="mt-1 font-bold text-slate-900">{MOCK_COMPANY.sector}</div></div>
-        <div><div className="text-xs font-black uppercase tracking-widest text-slate-400">Location</div><div className="mt-1 font-bold text-slate-900">{MOCK_COMPANY.location}</div></div>
-        <div><div className="text-xs font-black uppercase tracking-widest text-slate-400">Transparency</div><div className="mt-1 font-bold text-slate-900">{MOCK_COMPANY.transparencyScore}/5</div></div>
+        <div><div className="text-xs font-black uppercase tracking-widest text-slate-400">Company</div><div className="mt-1 font-bold text-slate-900">{company.full_name}</div></div>
+        <div><div className="text-xs font-black uppercase tracking-widest text-slate-400">Sector</div><div className="mt-1 font-bold text-slate-900">{company.sector}</div></div>
+        <div><div className="text-xs font-black uppercase tracking-widest text-slate-400">Location</div><div className="mt-1 font-bold text-slate-900">{company.location}</div></div>
+        <div><div className="text-xs font-black uppercase tracking-widest text-slate-400">Transparency</div><div className="mt-1 font-bold text-slate-900">{company.transparencyScore}/5</div></div>
       </div>
-      <p className="mt-8 text-sm font-medium leading-relaxed text-slate-600">{MOCK_COMPANY.description}</p>
+      <p className="mt-8 text-sm font-medium leading-relaxed text-slate-600">{company.description}</p>
       <Button className="mt-8" onClick={() => onAction('Company profile')}>Save Company Profile</Button>
     </Card>
   </div>

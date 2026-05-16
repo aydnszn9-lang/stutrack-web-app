@@ -20,14 +20,20 @@ import { Card, Badge, Button, Modal } from '../common/UI';
 import { MOCK_INTERNSHIPS, MOCK_COMPANY, MOCK_EXPERIENCES } from '../../mockData';
 import { Internship } from '../../types';
 
-export const InternshipListingsView = ({ onNavigate }: { onNavigate: (page: string) => void }) => {
+export const InternshipListingsView = ({
+  onNavigate,
+  internships = MOCK_INTERNSHIPS,
+}: {
+  onNavigate: (page: string) => void;
+  internships?: Internship[];
+}) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedJob, setSelectedJob] = useState<Internship | null>(null);
   const [filterType, setFilterType] = useState('ALL');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [savedJobIds, setSavedJobIds] = useState<string[]>([]);
 
-  const filteredJobs = MOCK_INTERNSHIPS.filter(job => {
+  const filteredJobs = internships.filter(job => {
     const matchesSearch = job.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
                          job.companyName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = filterType === 'ALL' || job.type === filterType;

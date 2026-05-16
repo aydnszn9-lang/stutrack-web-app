@@ -1,14 +1,17 @@
-import React from 'react';
-import { Bell, Search, Menu, User } from 'lucide-react';
-import { UserRole } from '../../types';
+import React, { useState } from 'react';
+import { Bell, Search, Menu } from 'lucide-react';
+import { Notification, UserRole } from '../../types';
+import { Badge } from '../common/UI';
 
 interface HeaderProps {
   role: UserRole;
   userName: string;
+  notifications?: Notification[];
   onMenuClick: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ role, userName, onMenuClick }) => {
+export const Header: React.FC<HeaderProps> = ({ role, userName, notifications = [], onMenuClick }) => {
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const roleLabels: Record<UserRole, string> = {
     STUDENT: 'Student',
     COMPANY: 'Company',
@@ -40,14 +43,41 @@ export const Header: React.FC<HeaderProps> = ({ role, userName, onMenuClick }) =
           />
         </div>
         
-        <button
-          onClick={() => window.alert('Notifications are available in the prototype header. Live notification data will be connected with the backend.')}
-          className="relative text-slate-400 hover:text-slate-900 transition-colors p-2 rounded-full hover:bg-slate-50"
-          title="View notifications"
-        >
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>
-        </button>
+        <div className="relative">
+          <button
+            onClick={() => setIsNotificationsOpen((value) => !value)}
+            className="relative text-slate-400 hover:text-slate-900 transition-colors p-2 rounded-full hover:bg-slate-50"
+            title="View notifications"
+          >
+            <Bell className="w-5 h-5" />
+            {notifications.some((item) => !item.read) && (
+              <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>
+            )}
+          </button>
+          {isNotificationsOpen && (
+            <div className="absolute right-0 mt-3 w-80 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+              <div className="border-b border-slate-100 px-4 py-3">
+                <div className="text-sm font-black text-slate-900">Notifications</div>
+                <div className="text-xs font-medium text-slate-500">Synced from Supabase when available.</div>
+              </div>
+              <div className="max-h-80 overflow-y-auto">
+                {notifications.length > 0 ? notifications.map((item) => (
+                  <div key={item.id} className="border-b border-slate-50 px-4 py-3 last:border-0">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-bold text-slate-900">{item.title}</div>
+                      <Badge variant={item.type === 'SUCCESS' ? 'success' : item.type === 'WARNING' ? 'warning' : item.type === 'ERROR' ? 'error' : 'info'}>
+                        {item.type}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs font-medium leading-relaxed text-slate-500">{item.message}</p>
+                  </div>
+                )) : (
+                  <div className="px-4 py-8 text-center text-sm font-medium text-slate-500">No notifications yet.</div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         <div className="flex items-center gap-3 pl-3 sm:pl-6 sm:border-l border-slate-100">
           <div className="text-right hidden sm:block">

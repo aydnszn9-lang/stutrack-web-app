@@ -13,10 +13,19 @@ import {
 import { Card, Badge, Button } from '../common/UI';
 import { MOCK_APPLICATIONS, MOCK_INTERNSHIPS } from '../../mockData';
 import { cn } from '../../lib/utils';
+import { Application, Internship } from '../../types';
 
-export const MyApplicationsView = ({ onNavigate }: { onNavigate: (page: string) => void }) => {
+export const MyApplicationsView = ({
+  onNavigate,
+  applications = MOCK_APPLICATIONS,
+  internships = MOCK_INTERNSHIPS,
+}: {
+  onNavigate: (page: string) => void;
+  applications?: Application[];
+  internships?: Internship[];
+}) => {
   const [activeTab, setActiveTab] = useState('Active');
-  const visibleApplications = MOCK_APPLICATIONS.filter((app) => {
+  const visibleApplications = applications.filter((app) => {
     if (activeTab === 'History') return ['REJECTED', 'WITHDRAWN', 'OFFER'].includes(app.status);
     if (activeTab === 'Saved') return app.status === 'DRAFT';
     return !['REJECTED', 'WITHDRAWN'].includes(app.status);
@@ -41,7 +50,7 @@ export const MyApplicationsView = ({ onNavigate }: { onNavigate: (page: string) 
 
       <div className="grid grid-cols-1 gap-4">
         {visibleApplications.map((app) => {
-          const job = MOCK_INTERNSHIPS.find(i => i.id === app.internshipId);
+          const job = internships.find(i => i.id === app.internshipId);
           
           const statusColors: Record<string, 'success' | 'info' | 'warning' | 'error' | 'default'> = {
              'INTERVIEW_SCHEDULED': 'success',

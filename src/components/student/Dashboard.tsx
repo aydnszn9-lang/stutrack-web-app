@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Card, Badge, Button } from '../common/UI';
 import { MOCK_STUDENT, MOCK_INTERNSHIPS, MOCK_APPLICATIONS, MOCK_NOTIFICATIONS } from '../../mockData';
+import { Application, Internship, Notification, StudentProfile } from '../../types';
 import { 
   AreaChart, 
   Area, 
@@ -36,14 +37,26 @@ const chartData = [
   { name: 'May', apps: 9 },
 ];
 
-export const StudentDashboardView = ({ onNavigate }: { onNavigate: (page: string) => void }) => {
+export const StudentDashboardView = ({
+  onNavigate,
+  student = MOCK_STUDENT,
+  internships = MOCK_INTERNSHIPS,
+  applications = MOCK_APPLICATIONS,
+  notifications = MOCK_NOTIFICATIONS,
+}: {
+  onNavigate: (page: string) => void;
+  student?: StudentProfile;
+  internships?: Internship[];
+  applications?: Application[];
+  notifications?: Notification[];
+}) => {
   return (
     <div className="space-y-8">
       {/* Welcome & Quick Summary */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
         <Card className="md:col-span-8 p-8 bg-gradient-to-r from-indigo-600 to-indigo-800 text-white border-none relative overflow-hidden">
           <div className="relative z-10">
-            <h1 className="text-3xl font-display font-bold mb-2">Hello, {MOCK_STUDENT.full_name}! 👋</h1>
+            <h1 className="text-3xl font-display font-bold mb-2">Hello, {student.full_name}!</h1>
             <p className="text-indigo-100 max-w-md mb-6">
               You have an interview scheduled for tomorrow at 2:00 PM. Good luck!
             </p>
@@ -83,8 +96,8 @@ export const StudentDashboardView = ({ onNavigate }: { onNavigate: (page: string
               <button onClick={() => onNavigate('applications')} className="text-sm font-bold text-indigo-600 hover:underline">View all</button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {MOCK_APPLICATIONS.map((app) => {
-                const job = MOCK_INTERNSHIPS.find(i => i.id === app.internshipId);
+              {applications.map((app) => {
+                const job = internships.find(i => i.id === app.internshipId);
                 return (
                   <Card key={app.id} className="p-5 hover:border-indigo-200 transition-all border-l-4 border-l-indigo-600">
                     <div className="flex justify-between items-start mb-3">
@@ -122,7 +135,7 @@ export const StudentDashboardView = ({ onNavigate }: { onNavigate: (page: string
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <tbody className="divide-y divide-slate-100">
-                    {MOCK_INTERNSHIPS.slice(2).map((job) => (
+                    {internships.slice(2).map((job) => (
                       <tr key={job.id} className="group hover:bg-slate-50 transition-colors">
                         <td className="p-4 pl-6">
                           <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center group-hover:bg-indigo-600 transition-colors">
@@ -192,7 +205,7 @@ export const StudentDashboardView = ({ onNavigate }: { onNavigate: (page: string
           <section>
             <h2 className="text-xl font-display font-bold text-slate-900 mb-6">New For You</h2>
             <Card className="divide-y divide-slate-100">
-              {MOCK_NOTIFICATIONS.slice(0, 3).map((notif) => (
+              {notifications.slice(0, 3).map((notif) => (
                 <div key={notif.id} className="p-4 hover:bg-slate-50 transition-colors cursor-pointer">
                   <div className="flex gap-4">
                     <div className={cn(
