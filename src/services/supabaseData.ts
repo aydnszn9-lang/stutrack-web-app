@@ -53,6 +53,7 @@ type CompanyRow = {
 type InternshipRow = {
   id: string;
   company_id: string;
+  company_name?: string | null;
   title: string;
   description: string;
   responsibilities: string[] | null;
@@ -64,7 +65,6 @@ type InternshipRow = {
   stipend?: string | null;
   expires_at: string;
   match_score?: number | null;
-  company_profiles?: (CompanyRow & { profiles?: ProfileRow | null }) | null;
 };
 
 type ApplicationRow = {
@@ -126,7 +126,7 @@ const toCompany = (row: CompanyRow): CompanyProfile => ({
 const toInternship = (row: InternshipRow): Internship => ({
   id: row.id,
   companyId: row.company_id,
-  companyName: row.company_profiles?.profiles?.full_name || 'Company',
+  companyName: row.company_name || 'Company',
   title: row.title,
   description: row.description,
   responsibilities: row.responsibilities || [],
@@ -215,7 +215,7 @@ export const getStudentProfile = async (userId: string): Promise<StudentProfile>
   if (!isSupabaseConfigured) return MOCK_STUDENT;
   const { data, error } = await supabase
     .from('student_profiles')
-    .select('*, profiles(*)')
+    .select('*')
     .eq('user_id', userId)
     .maybeSingle();
   if (error || !data) return MOCK_STUDENT;
@@ -226,7 +226,7 @@ export const getCompanyProfile = async (userId: string): Promise<CompanyProfile>
   if (!isSupabaseConfigured) return MOCK_COMPANY;
   const { data, error } = await supabase
     .from('company_profiles')
-    .select('*, profiles(*)')
+    .select('*')
     .eq('user_id', userId)
     .maybeSingle();
   if (error || !data) return MOCK_COMPANY;
@@ -244,7 +244,7 @@ export const getInternships = async (): Promise<Internship[]> => {
   if (!isSupabaseConfigured) return MOCK_INTERNSHIPS;
   const { data, error } = await supabase
     .from('internships')
-    .select('*, company_profiles(*, profiles(*))')
+    .select('*')
     .order('created_at', { ascending: false });
   if (error || !data || data.length === 0) return MOCK_INTERNSHIPS;
   return (data as InternshipRow[]).map(toInternship);
@@ -279,13 +279,15 @@ export const submitApplication = async (input: {
 }) => {
   if (!isSupabaseConfigured) return { ok: false, reason: 'Supabase is not configured.' };
 
-  const { error } = await supabase.from('applications').insert({
+  const { error } = await supabase.from('applications').upsert({
     student_id: input.studentId,
     internship_id: input.internshipId,
     status: 'SUBMITTED',
     match_score: input.matchScore ?? 80,
     match_reason: input.coverNote,
     documents: input.resumeUrl ? [{ name: 'Resume link', url: input.resumeUrl }] : [],
+  }, {
+    onConflict: 'student_id,internship_id',
   });
 
   return error ? { ok: false, reason: error.message } : { ok: true };
