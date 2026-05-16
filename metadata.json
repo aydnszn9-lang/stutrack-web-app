@@ -1,0 +1,8 @@
+{
+  "name": "StuTrack",
+  "description": "An all-in-one internship platform connecting students, companies, and universities with AI-powered matching and application tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
